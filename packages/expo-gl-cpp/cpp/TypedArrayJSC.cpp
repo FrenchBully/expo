@@ -174,6 +174,6 @@ std::vector<uint8_t> JSCTypedArray::rawFromJSValue(jsi::Runtime& runtime, const 
   return fromJSValue<Type::Uint8Array>(runtime, val);
 }
 
-Type typeFromJSValue(jsi::Runtime& runtime, const jsi::Value& val) {
+Type JSCTypedArray::typeFromJSValue(jsi::Runtime& runtime, const jsi::Value& val) {
   return Type::None;
 }
