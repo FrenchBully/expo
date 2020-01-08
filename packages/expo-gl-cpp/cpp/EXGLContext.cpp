@@ -89,7 +89,7 @@ void decodeURI(char *dst, const char *src) {
 
 // TODO(wkozyra95) needs to be moved (for now it's here because it requires access to EXGLContext and needs to be in cpp file
 // Load image data from an object with a `.localUri` member
-binary_ptr<uint8_t> EXGLContext::loadImage(
+std::shared_ptr<uint8_t> EXGLContext::loadImage(
         jsi::Runtime& runtime,
         const jsi::Value& jsPixels,
         int *fileWidth,
@@ -99,12 +99,12 @@ binary_ptr<uint8_t> EXGLContext::loadImage(
   if (localUriProp.isString()) {
     auto localUri = localUriProp.asString(runtime).utf8(runtime);
     if (strncmp(localUri.c_str(), "file://", 7) != 0) {
-      return binary_ptr<uint8_t>(nullptr);
+      return std::shared_ptr<uint8_t>(nullptr);
     }
     char localPath[localUri.size()];
     decodeURI(localPath, localUri.c_str() + 7);
 
-    return binary_ptr<uint8_t>(
+    return std::shared_ptr<uint8_t>(
             stbi_load(
                 localPath,
                 fileWidth,
@@ -115,5 +115,5 @@ binary_ptr<uint8_t> EXGLContext::loadImage(
                 stbi_image_free(data);;
             });
   }
-  return binary_ptr<uint8_t>(nullptr);
+  return std::shared_ptr<uint8_t>(nullptr);
 }

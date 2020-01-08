@@ -36,9 +36,6 @@
 
 namespace jsi = facebook::jsi;
 
-template<typename T>
-using binary_ptr = std::unique_ptr<T, std::function<void(T*)>>;
-
 // --- EXGLContext -------------------------------------------------------------
 
 // Class of the C++ object representing an EXGL rendering context.
@@ -183,6 +180,7 @@ public:
   }
 
   inline GLuint lookupObject(UEXGLObjectId exglObjId) noexcept {
+    EXGLSysLog("lookup object %d", exglObjId);
     auto iter = objects.find(exglObjId);
     return iter == objects.end() ? 0 : iter->second;
   }
@@ -194,10 +192,9 @@ private:
 
 public:
   EXGLContext(jsi::Runtime& runtime, UEXGLContextId exglCtxId) {
-    prepareTypedArrayApi(runtime);
-
     // Create JS version of us
     jsi::Object jsGl(runtime);
+    jsGl.setProperty(runtime, jsi::PropNameID::forUtf8(runtime, "exglCtxId"), static_cast<double>(exglCtxId));
     installMethods(runtime, jsGl);
     installConstants(runtime, jsGl);
 
@@ -363,7 +360,7 @@ private:
   }
 
   // Load image data from an object with a `.localUri` member
-  binary_ptr<uint8_t> loadImage(
+  std::shared_ptr<uint8_t> loadImage(
           jsi::Runtime& runtime,
           const jsi::Value& object,
           int *fileWidth,

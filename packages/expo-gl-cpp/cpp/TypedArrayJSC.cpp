@@ -7,7 +7,6 @@
 #include <JavaScriptCore/JSContextRef.h>
 
 #include "TypedArrayJSI.h"
-#include "TypedArrayJSC.h"
 
 // CASE I
 //
@@ -54,8 +53,9 @@ template<> struct jscTypeMap<Type::ArrayBuffer> { static constexpr JSTypedArrayT
 template<> struct jscTypeMap<Type::None> { static constexpr JSTypedArrayType type = kJSTypedArrayTypeNone; };
 
 template<Type T>
-typename jscTypeMap<T>::type jscArrayType() { return jscTypeMap<T>::type; }
+JSTypedArrayType jscArrayType() { return jscTypeMap<T>::type; }
 
+static bool usingTypedArrayHack = false;
 
 // fake class to extract jsc specific values from jsi::Runtime
 // partialy copied from JSCRuntime.cpp
@@ -66,9 +66,8 @@ public:
 
   class JSCObjectValue final : public PointerValue {
   public:
-    JSCObjectValue(JSGlobalContextRef ctx, const std::atomic<bool>& ctxInvalid, JSObjectRef obj);
-
-    void invalidate() override;
+    JSCObjectValue(JSGlobalContextRef ctx, const std::atomic<bool>& ctxInvalid, JSObjectRef obj): ctx_(ctx), ctxInvalid_(ctxInvalid) {}
+    void invalidate() override {}
 
     JSGlobalContextRef ctx_;
     const std::atomic<bool>& ctxInvalid_;
@@ -100,16 +99,18 @@ JSCRuntime* getCtxRef(jsi::Runtime& runtime) {
 }
 
 template <Type T>
-jsi::Value JSCTypedArray::create(jsi::Runtime& runtime, std::vector<ContentType<T>> data) {
+jsi::Value TypedArray::create(jsi::Runtime& runtime, std::vector<ContentType<T>> data) {
   auto jsc = getCtxRef(runtime);
-  int byteLength = data.size * sizeof(ContentType<T>);
+  int byteLength = data.size() * sizeof(ContentType<T>);
   JSTypedArrayType arrayType = jscArrayType<T>();
-  if (data) {
+  if (data.size() != 0) {
     if (usingTypedArrayHack) {
-      return JSObjectMakeTypedArrayWithData(jsc->ctx, arrayType, data.data(), byteLength);
+      return JSCRuntime::toJSI(
+              jsc,
+              JSObjectMakeTypedArrayWithData(jsc->ctx, arrayType, data.data(), byteLength));
     } else {
-      void *dataMalloc = new char[byteLength];
-      memcpy(dataMalloc, data, byteLength);
+      uint8_t *dataMalloc = new uint8_t[byteLength];
+      memcpy(dataMalloc, data.data(), byteLength);
       return JSCRuntime::toJSI(jsc, JSObjectMakeTypedArrayWithBytesNoCopy(
               jsc->ctx,
               arrayType,
@@ -128,19 +129,19 @@ jsi::Value JSCTypedArray::create(jsi::Runtime& runtime, std::vector<ContentType<
   }
 }
 
-void JSCTypedArray::updateWithData(jsi::Runtime& runtime, const jsi::Value& val, std::vector<uint8_t> data) {
+void TypedArray::updateWithData(jsi::Runtime& runtime, const jsi::Value& val, std::vector<uint8_t> data) {
 
 }
 
 template <Type T>
-std::vector<ContentType<T>> JSCTypedArray::fromJSValue(jsi::Runtime& runtime, const jsi::Value& jsVal) {
+std::vector<ContentType<T>> TypedArray::fromJSValue(jsi::Runtime& runtime, const jsi::Value& jsVal) {
   auto jsc = getCtxRef(runtime);
   if (usingTypedArrayHack) {
     size_t byteLength;
     uint8_t* data = reinterpret_cast<uint8_t*>(
             JSObjectGetTypedArrayDataMalloc(jsc->ctx, (JSObjectRef) JSCRuntime::toJSC(runtime, jsVal), &byteLength));
-    auto start = static_cast<ContentType<T>*>(data);
-    auto end = static_cast<ContentType<T>*>(reinterpret_cast<uint8_t*>(data) + byteLength);
+    auto start = reinterpret_cast<ContentType<T>*>(data);
+    auto end = reinterpret_cast<ContentType<T>*>(data + byteLength);
     std::vector<ContentType<T>> result(start, end); // TODO: unecessary copy
     free(data);
     return result;
@@ -170,10 +171,37 @@ std::vector<ContentType<T>> JSCTypedArray::fromJSValue(jsi::Runtime& runtime, co
   }
 }
 
-std::vector<uint8_t> JSCTypedArray::rawFromJSValue(jsi::Runtime& runtime, const jsi::Value& val) {
+std::vector<uint8_t> TypedArray::rawFromJSValue(jsi::Runtime& runtime, const jsi::Value& val) {
   return fromJSValue<Type::Uint8Array>(runtime, val);
 }
 
-Type JSCTypedArray::typeFromJSValue(jsi::Runtime& runtime, const jsi::Value& val) {
-  return Type::None;
+Type TypedArray::typeFromJSValue(jsi::Runtime& runtime, const jsi::Value& jsVal) {
+  auto jsc = getCtxRef(runtime);
+  if (usingTypedArrayHack) {
+    return Type::None;
+  } else {
+    JSTypedArrayType type = JSValueGetTypedArrayType(jsc->ctx, JSCRuntime::toJSC(runtime, jsVal), nullptr);
+    switch (type) {
+      case kJSTypedArrayTypeInt8Array: return Type::Int8Array;
+      case kJSTypedArrayTypeInt16Array: return Type::Int16Array;
+      case kJSTypedArrayTypeInt32Array: return Type::Int32Array;
+      case kJSTypedArrayTypeUint8Array: return Type::Uint8Array;
+      case kJSTypedArrayTypeUint8ClampedArray: return Type::Uint8ClampedArray;
+      case kJSTypedArrayTypeUint16Array: return Type::Uint16Array;
+      case kJSTypedArrayTypeUint32Array: return Type::Uint32Array;
+      case kJSTypedArrayTypeFloat32Array: return Type::Float32Array;
+      case kJSTypedArrayTypeFloat64Array: return Type::Float64Array;
+      case kJSTypedArrayTypeArrayBuffer: return Type::ArrayBuffer;
+      default: return Type::None;
+    }
+  }
 }
+
+// If templates are defined inside cpp file they need to be explicitly instantiated
+template jsi::Value TypedArray::create<TypedArray::Int32Array>(jsi::Runtime&, std::vector<int32_t>);
+template jsi::Value TypedArray::create<TypedArray::Uint32Array>(jsi::Runtime&, std::vector<uint32_t>);
+template jsi::Value TypedArray::create<TypedArray::Float32Array>(jsi::Runtime&, std::vector<float>);
+
+template std::vector<int32_t> TypedArray::fromJSValue<TypedArray::Int32Array>(jsi::Runtime&, const jsi::Value& jsVal);
+template std::vector<uint32_t> TypedArray::fromJSValue<TypedArray::Uint32Array>(jsi::Runtime&, const jsi::Value& jsVal);
+template std::vector<float> TypedArray::fromJSValue<TypedArray::Float32Array>(jsi::Runtime&, const jsi::Value& jsVal);

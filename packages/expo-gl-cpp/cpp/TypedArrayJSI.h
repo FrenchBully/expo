@@ -27,7 +27,7 @@ public:
 
 private:
   // associate type of an array with type of a content
-  template<enum Type> struct typeMap;
+  template<Type> struct typeMap;
 
   template<> struct typeMap<Int8Array> { typedef int8_t type; };
   template<> struct typeMap<Int16Array> { typedef int16_t type; };
@@ -42,27 +42,21 @@ private:
   template<> struct typeMap<None> { typedef uint8_t type; };
 
 public:
-  virtual ~TypedArray() {};
-
   template<Type T>
   using ContentType = typename typeMap<T>::type;
 
-  static std::unique_ptr<TypedArray>& get();
-  
   template <Type T>
-  jsi::Value create(jsi::Runtime& runtime, std::vector<ContentType<T>> data);
+  static jsi::Value create(jsi::Runtime& runtime, std::vector<ContentType<T>> data);
 
-  void updateWithData(jsi::Runtime& runtime, const jsi::Value& val, std::vector<uint8_t> data);
+  static void updateWithData(jsi::Runtime& runtime, const jsi::Value& val, std::vector<uint8_t> data);
 
   template <Type T>
-  std::vector<ContentType<T>> fromJSValue(jsi::Runtime& runtime, const jsi::Value& val);
+  static std::vector<ContentType<T>> fromJSValue(jsi::Runtime& runtime, const jsi::Value& val);
 
-  std::vector<uint8_t> rawFromJSValue(jsi::Runtime& runtime, const jsi::Value& val);
+  static std::vector<uint8_t> rawFromJSValue(jsi::Runtime& runtime, const jsi::Value& val);
 
-  Type typeFromJSValue(jsi::Runtime& runtime, const jsi::Value& val);
+  static Type typeFromJSValue(jsi::Runtime& runtime, const jsi::Value& val);
 
 protected:
   virtual VMType vmName() = 0;
 };
-
-void prepareTypedArrayApi(jsi::Runtime& runtime);

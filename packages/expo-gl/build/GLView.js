@@ -28,7 +28,20 @@ export class GLView extends React.Component {
     }
     static async createContextAsync() {
         const { exglCtxId } = await ExponentGLObjectManager.createContextAsync();
-        return getGl(exglCtxId);
+        const gl = getGl(exglCtxId);
+        Object.keys(gl).forEach((index) => {
+            if (typeof gl[index] === 'function') {
+                console.log(`installing ${index}`);
+                const fn = gl[index];
+                gl[index] = function () {
+                    console.log(`calling ${index} with ${JSON.stringify(Array.from(arguments))}`);
+                    const ret = fn.apply(gl, arguments);
+                    console.log(`returns ${JSON.stringify(ret)}`);
+                    return ret;
+                };
+            }
+        });
+        return gl;
     }
     static async destroyContextAsync(exgl) {
         const exglCtxId = getContextId(exgl);
@@ -332,6 +345,7 @@ const getGl = (exglCtxId) => {
     gl.__exglCtxId = exglCtxId;
     delete global.__EXGLContexts[exglCtxId];
     // determine the prototype to use, depending on OpenGL ES version
+    console.warn(gl.VERSION);
     const glesVersion = gl.getParameter(gl.VERSION);
     const supportsWebGL2 = parseFloat(glesVersion.split(/[^\d.]+/g).join(' ')) >= 3.0;
     const prototype = supportsWebGL2

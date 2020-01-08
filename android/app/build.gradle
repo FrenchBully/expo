@@ -44,6 +44,9 @@ android {
     manifestPlaceholders = [
         'appAuthRedirectScheme': 'host.exp.exponent'
     ]
+    ndk {
+        abiFilters 'arm64-v8a'
+    }
   }
   dexOptions {
     javaMaxHeapSize System.getenv("DISABLE_DEX_MAX_HEAP") ? null : "8g"
